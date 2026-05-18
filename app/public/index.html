@@ -286,7 +286,22 @@ select option { background: var(--surface); }
     </div>
   </div>
 
-  <div id="form-wrap">
+  <!-- Password gate -->
+  <div id="pass-gate">
+    <div class="card">
+      <p class="section-label">Access</p>
+      <div class="field" style="margin-bottom:0">
+        <label>Upload password <span class="req">*</span></label>
+        <input type="password" id="f-pass" placeholder="Provided by your professor" oninput="onPassInput()" onkeydown="if(event.key==='Enter')checkPass()">
+        <p id="pass-error" style="font-size:12px;color:var(--error);margin-top:6px;display:none;">Incorrect password.</p>
+      </div>
+      <button class="submit-btn" id="pass-btn" disabled onclick="checkPass()" style="margin-top:1rem;">
+        Continue
+      </button>
+    </div>
+  </div>
+
+  <div id="form-wrap" style="display:none">
 
     <div class="card">
       <p class="section-label">Your info</p>
@@ -297,12 +312,6 @@ select option { background: var(--surface); }
       <div class="field">
         <label>Email address <span class="req">*</span></label>
         <input type="email" id="f-email" placeholder="jane@student.laccd.edu" oninput="validate()">
-      </div>
-      <div class="field">
-        <label>Upload password <span class="req">*</span></label>
-        <input type="password" id="f-pass" placeholder="Provided by your professor" oninput="onPassInput()" onblur="checkPass()">
-        <p id="pass-error" style="font-size:12px;color:var(--error);margin-top:6px;display:none;">Incorrect password.</p>
-        <p id="pass-ok" style="font-size:12px;color:var(--success);margin-top:6px;display:none;">Password accepted.</p>
       </div>
       <div class="field">
         <label>Film title <span class="req">*</span></label>
@@ -380,7 +389,11 @@ select option { background: var(--surface); }
 
     <div class="progress-wrap" id="progress-wrap">
       <div class="progress-bg"><div class="progress-fill" id="progress-fill"></div></div>
-      <p class="progress-lbl" id="progress-lbl">Uploading...</p>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;">
+        <p class="progress-lbl" id="progress-lbl">Uploading...</p>
+        <p class="progress-lbl" id="progress-speed" style="font-variant-numeric:tabular-nums;"></p>
+      </div>
+      <p class="progress-lbl" id="progress-detail" style="margin-top:2px;opacity:0.6;"></p>
     </div>
 
   </div>
@@ -401,18 +414,18 @@ select option { background: var(--surface); }
 
 <script>
 let selectedFile = null;
-let passVerified  = false;
 
 function onPassInput() {
-  passVerified = false;
-  document.getElementById('pass-ok').style.display    = 'none';
+  const val = document.getElementById('f-pass').value.trim();
   document.getElementById('pass-error').style.display = 'none';
-  validate();
+  document.getElementById('pass-btn').disabled = !val;
 }
 
 async function checkPass() {
   const pass = document.getElementById('f-pass').value.trim();
   if (!pass) return;
+  document.getElementById('pass-btn').textContent = 'Checking...';
+  document.getElementById('pass-btn').disabled = true;
   try {
     const res = await fetch('/check-pass', {
       method: 'POST',
@@ -420,18 +433,19 @@ async function checkPass() {
       body: JSON.stringify({ uploadPass: pass }),
     });
     if (res.ok) {
-      passVerified = true;
-      document.getElementById('pass-ok').style.display    = 'block';
-      document.getElementById('pass-error').style.display = 'none';
+      document.getElementById('pass-gate').style.display = 'none';
+      document.getElementById('form-wrap').style.display = 'block';
     } else {
-      passVerified = false;
       document.getElementById('pass-error').style.display = 'block';
-      document.getElementById('pass-ok').style.display    = 'none';
+      document.getElementById('pass-btn').textContent = 'Continue';
+      document.getElementById('pass-btn').disabled = false;
     }
   } catch(e) {
-    passVerified = false;
+    document.getElementById('pass-error').textContent = 'Network error. Try again.';
+    document.getElementById('pass-error').style.display = 'block';
+    document.getElementById('pass-btn').textContent = 'Continue';
+    document.getElementById('pass-btn').disabled = false;
   }
-  validate();
 }
 
 function formatBytes(b) {
@@ -445,7 +459,6 @@ function validate() {
     document.getElementById('f-name').value.trim() &&
     document.getElementById('f-email').value.trim() &&
     document.getElementById('f-title').value.trim() &&
-    passVerified &&
     selectedFile;
   document.getElementById('submit-btn').disabled = !ready;
 }
@@ -490,6 +503,20 @@ function checkBitrate(f) {
   video.src = url;
 }
 
+function formatSpeed(bps) {
+  if (bps >= 1e9) return (bps / 1e9).toFixed(2) + ' Gbps';
+  if (bps >= 1e6) return (bps / 1e6).toFixed(1) + ' Mbps';
+  if (bps >= 1e3) return (bps / 1e3).toFixed(0) + ' Kbps';
+  return bps.toFixed(0) + ' bps';
+}
+
+function formatTime(seconds) {
+  if (!isFinite(seconds) || seconds <= 0) return '';
+  if (seconds >= 3600) return `${Math.floor(seconds/3600)}h ${Math.floor((seconds%3600)/60)}m left`;
+  if (seconds >= 60)   return `${Math.floor(seconds/60)}m ${Math.floor(seconds%60)}s left`;
+  return `${Math.floor(seconds)}s left`;
+}
+
 function doUpload() {
   const name  = document.getElementById('f-name').value.trim();
   const email = document.getElementById('f-email').value.trim();
@@ -511,14 +538,38 @@ function doUpload() {
   const pw = document.getElementById('progress-wrap');
   pw.style.display = 'block';
 
+  let lastLoaded  = 0;
+  let lastTime    = Date.now();
+  let smoothedBps = 0;
+
   const xhr = new XMLHttpRequest();
   xhr.open('POST', '/upload');
+
   xhr.upload.onprogress = (e) => {
-    if (e.lengthComputable) {
-      const pct = Math.round((e.loaded / e.total) * 100);
-      document.getElementById('progress-fill').style.width = pct + '%';
-      document.getElementById('progress-lbl').textContent = `Uploading... ${pct}%`;
+    if (!e.lengthComputable) return;
+    const now     = Date.now();
+    const elapsed = (now - lastTime) / 1000;
+    const pct     = Math.round((e.loaded / e.total) * 100);
+
+    if (elapsed > 0.25) {
+      const instantBps = ((e.loaded - lastLoaded) * 8) / elapsed;
+      smoothedBps = smoothedBps === 0
+        ? instantBps
+        : smoothedBps * 0.7 + instantBps * 0.3;
+      lastLoaded = e.loaded;
+      lastTime   = now;
+
+      const remaining = smoothedBps > 0
+        ? ((e.total - e.loaded) * 8) / smoothedBps
+        : Infinity;
+
+      document.getElementById('progress-speed').textContent  = formatSpeed(smoothedBps);
+      document.getElementById('progress-detail').textContent =
+        `${formatBytes(e.loaded)} of ${formatBytes(e.total)} — ${formatTime(remaining)}`;
     }
+
+    document.getElementById('progress-fill').style.width = pct + '%';
+    document.getElementById('progress-lbl').textContent  = `Uploading... ${pct}%`;
   };
 
   xhr.onload = () => {
@@ -534,7 +585,16 @@ function doUpload() {
     }
   };
 
-  xhr.onerror = () => showError('Network error. Check your connection and try again.');
+  xhr.onerror = () => {
+    clearInterval(keepalive);
+    showError('Network error. Check your connection and try again.');
+  };
+
+  // Ping the server every 30s to keep the proxy connection alive
+  const keepalive = setInterval(() => fetch('/ping').catch(() => {}), 30000);
+
+  xhr.onloadend = () => clearInterval(keepalive);
+
   xhr.send(fd);
 }
 

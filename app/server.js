@@ -67,6 +67,9 @@ const upload = multer({
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Keepalive ping -- called by client every 30s during upload to prevent proxy timeouts
+app.get('/ping', (req, res) => res.json({ ok: true }));
+
 // Password pre-check endpoint -- called before upload to validate password
 // Returns 200 if correct, 401 if not. No file involved.
 app.post('/check-pass', (req, res) => {
