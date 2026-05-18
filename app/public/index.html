@@ -297,6 +297,10 @@ select option { background: var(--surface); }
         <label>Email address <span class="req">*</span></label>
         <input type="email" id="f-email" placeholder="jane@student.laccd.edu" oninput="validate()">
       </div>
+      <div class="field">
+        <label>Film title <span class="req">*</span></label>
+        <input type="text" id="f-title" placeholder="e.g. The Long Way Home" oninput="validate()">
+      </div>
       <div class="field-row">
         <div class="field">
           <label>Class number <span class="opt">(optional)</span></label>
@@ -402,6 +406,7 @@ function validate() {
   const ready =
     document.getElementById('f-name').value.trim() &&
     document.getElementById('f-email').value.trim() &&
+    document.getElementById('f-title').value.trim() &&
     selectedFile;
   document.getElementById('submit-btn').disabled = !ready;
 }
@@ -454,8 +459,10 @@ function doUpload() {
 
   const fd = new FormData();
   fd.append('film', selectedFile);
+  const title = document.getElementById('f-title').value.trim();
   fd.append('studentName', name);
   fd.append('studentEmail', email);
+  fd.append('filmTitle', title);
   if (cls)  fd.append('classNumber', cls);
   if (prof) fd.append('professor', prof);
 

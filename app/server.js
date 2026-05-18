@@ -3,9 +3,9 @@ const multer  = require('multer');
 const path    = require('path');
 const fs      = require('fs');
 
-const app        = express();
-const PORT       = process.env.PORT || 3000;
-const UPLOAD_DIR = process.env.UPLOAD_DIR || '/data';
+const app         = express();
+const PORT        = process.env.PORT || 3000;
+const UPLOAD_DIR  = process.env.UPLOAD_DIR || '/data';
 const UPLOAD_PASS = process.env.UPLOAD_PASS || '';
 
 const ALLOWED_EXTENSIONS = ['.mp4', '.mov', '.mxf', '.mkv', '.avi'];
@@ -14,7 +14,6 @@ const ALLOWED_MIMES = [
   'video/x-matroska', 'video/mxf', 'application/mxf',
 ];
 
-// Ensure upload directory exists
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 function sanitize(str) {
@@ -25,23 +24,27 @@ function sanitize(str) {
     .slice(0, 60);
 }
 
+// Reformat "First Last" -> "Last_First"
+function lastFirst(fullName) {
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 1) return sanitize(parts[0]);
+  const last  = parts[parts.length - 1];
+  const first = parts.slice(0, -1).join(' ');
+  return sanitize(`${last}_${first}`);
+}
+
 function buildFilename(fields, originalName) {
-  const ext  = path.extname(originalName).toLowerCase();
-  const name = sanitize(fields.studentName);
-  const parts = [name];
+  const ext   = path.extname(originalName).toLowerCase();
+  const parts = [lastFirst(fields.studentName)];
   if (fields.classNumber) parts.push(sanitize(fields.classNumber));
   if (fields.professor)   parts.push(sanitize(fields.professor));
-  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  parts.push(ts);
-  return parts.join('__') + ext;
+  if (fields.filmTitle)   parts.push(sanitize(fields.filmTitle));
+  return parts.join('_') + ext;
 }
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename:    (req, file, cb) => {
-    const name = buildFilename(req.body, file.originalname);
-    cb(null, name);
-  },
+  filename:    (req, file, cb) => cb(null, buildFilename(req.body, file.originalname)),
 });
 
 const upload = multer({
@@ -58,13 +61,10 @@ const upload = multer({
   },
 });
 
-// Middleware
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Upload route
 app.post('/upload', (req, res) => {
-  // Optional upload password check
   if (UPLOAD_PASS) {
     const provided = req.headers['x-upload-pass'] || '';
     if (provided !== UPLOAD_PASS) {
@@ -73,15 +73,11 @@ app.post('/upload', (req, res) => {
   }
 
   upload.single('film')(req, res, (err) => {
-    if (err) {
-      return res.status(400).json({ error: err.message });
-    }
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file received.' });
-    }
-    if (!req.body.studentName || !req.body.studentEmail) {
+    if (err) return res.status(400).json({ error: err.message });
+    if (!req.file) return res.status(400).json({ error: 'No file received.' });
+    if (!req.body.studentName || !req.body.studentEmail || !req.body.filmTitle) {
       fs.unlinkSync(req.file.path);
-      return res.status(400).json({ error: 'Name and email are required.' });
+      return res.status(400).json({ error: 'Name, email, and film title are required.' });
     }
     console.log(`[upload] ${req.file.filename} | ${req.body.studentName} | ${req.body.studentEmail}`);
     res.json({ ok: true, filename: req.file.filename });
