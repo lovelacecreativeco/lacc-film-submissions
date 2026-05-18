@@ -298,6 +298,10 @@ select option { background: var(--surface); }
         <input type="email" id="f-email" placeholder="jane@student.laccd.edu" oninput="validate()">
       </div>
       <div class="field">
+        <label>Upload password <span class="req">*</span></label>
+        <input type="password" id="f-pass" placeholder="Provided by your professor" oninput="validate()">
+      </div>
+      <div class="field">
         <label>Film title <span class="req">*</span></label>
         <input type="text" id="f-title" placeholder="e.g. The Long Way Home" oninput="validate()">
       </div>
@@ -310,6 +314,7 @@ select option { background: var(--surface); }
               <option value="Cinema 002">Cinema 002</option>
               <option value="Cinema 010">Cinema 010</option>
               <option value="Cinema 012">Cinema 012</option>
+              <option value="Cinema 033">Cinema 033</option>
             </select>
           </div>
         </div>
@@ -392,8 +397,6 @@ select option { background: var(--surface); }
 </div>
 
 <script>
-const UPLOAD_PASS = '__UPLOAD_PASS__';
-
 let selectedFile = null;
 
 function formatBytes(b) {
@@ -407,6 +410,7 @@ function validate() {
     document.getElementById('f-name').value.trim() &&
     document.getElementById('f-email').value.trim() &&
     document.getElementById('f-title').value.trim() &&
+    document.getElementById('f-pass').value.trim() &&
     selectedFile;
   document.getElementById('submit-btn').disabled = !ready;
 }
@@ -460,7 +464,9 @@ function doUpload() {
   const fd = new FormData();
   fd.append('film', selectedFile);
   const title = document.getElementById('f-title').value.trim();
+  const pass  = document.getElementById('f-pass').value.trim();
   fd.append('studentName', name);
+  fd.append('uploadPass', pass);
   fd.append('studentEmail', email);
   fd.append('filmTitle', title);
   if (cls)  fd.append('classNumber', cls);
@@ -472,10 +478,6 @@ function doUpload() {
 
   const xhr = new XMLHttpRequest();
   xhr.open('POST', '/upload');
-  if (UPLOAD_PASS !== '__UPLOAD_PASS__') {
-    xhr.setRequestHeader('x-upload-pass', UPLOAD_PASS);
-  }
-
   xhr.upload.onprogress = (e) => {
     if (e.lengthComputable) {
       const pct = Math.round((e.loaded / e.total) * 100);

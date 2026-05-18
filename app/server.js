@@ -65,19 +65,16 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.post('/upload', (req, res) => {
-  if (UPLOAD_PASS) {
-    const provided = req.headers['x-upload-pass'] || '';
-    if (provided !== UPLOAD_PASS) {
-      return res.status(401).json({ error: 'Invalid upload password.' });
-    }
-  }
-
   upload.single('film')(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: 'No file received.' });
     if (!req.body.studentName || !req.body.studentEmail || !req.body.filmTitle) {
       fs.unlinkSync(req.file.path);
       return res.status(400).json({ error: 'Name, email, and film title are required.' });
+    }
+    if (UPLOAD_PASS && req.body.uploadPass !== UPLOAD_PASS) {
+      fs.unlinkSync(req.file.path);
+      return res.status(401).json({ error: 'Incorrect upload password.' });
     }
     console.log(`[upload] ${req.file.filename} | ${req.body.studentName} | ${req.body.studentEmail}`);
     res.json({ ok: true, filename: req.file.filename });
