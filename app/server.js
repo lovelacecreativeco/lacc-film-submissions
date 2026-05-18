@@ -17,16 +17,15 @@ const ALLOWED_MIMES = [
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 function sanitize(str) {
-  return str
+  return (str || '')
     .trim()
     .replace(/[^a-zA-Z0-9 _\-\.]/g, '')
     .replace(/\s+/g, '_')
     .slice(0, 60);
 }
 
-// Reformat "First Last" -> "Last_First"
 function lastFirst(fullName) {
-  const parts = fullName.trim().split(/\s+/);
+  const parts = (fullName || '').trim().split(/\s+/);
   if (parts.length === 1) return sanitize(parts[0]);
   const last  = parts[parts.length - 1];
   const first = parts.slice(0, -1).join(' ');
@@ -42,9 +41,13 @@ function buildFilename(fields, originalName) {
   return parts.join('_') + ext;
 }
 
+// Store uploads with a temp name first, rename after body is parsed
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename:    (req, file, cb) => cb(null, buildFilename(req.body, file.originalname)),
+  filename:    (req, file, cb) => {
+    const tmp = `tmp_${Date.now()}_${Math.random().toString(36).slice(2)}${path.extname(file.originalname).toLowerCase()}`;
+    cb(null, tmp);
+  },
 });
 
 const upload = multer({
@@ -64,20 +67,44 @@ const upload = multer({
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Password pre-check endpoint -- called before upload to validate password
+// Returns 200 if correct, 401 if not. No file involved.
+app.post('/check-pass', (req, res) => {
+  if (!UPLOAD_PASS) return res.json({ ok: true });
+  if (req.body.uploadPass === UPLOAD_PASS) {
+    res.json({ ok: true });
+  } else {
+    res.status(401).json({ ok: false, error: 'Incorrect password.' });
+  }
+});
+
 app.post('/upload', (req, res) => {
   upload.single('film')(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: 'No file received.' });
+
     if (!req.body.studentName || !req.body.studentEmail || !req.body.filmTitle) {
       fs.unlinkSync(req.file.path);
       return res.status(400).json({ error: 'Name, email, and film title are required.' });
     }
+
     if (UPLOAD_PASS && req.body.uploadPass !== UPLOAD_PASS) {
       fs.unlinkSync(req.file.path);
       return res.status(401).json({ error: 'Incorrect upload password.' });
     }
-    console.log(`[upload] ${req.file.filename} | ${req.body.studentName} | ${req.body.studentEmail}`);
-    res.json({ ok: true, filename: req.file.filename });
+
+    // Rename temp file to final name now that req.body is populated
+    const finalName = buildFilename(req.body, req.file.originalname);
+    const finalPath = path.join(UPLOAD_DIR, finalName);
+
+    fs.rename(req.file.path, finalPath, (renameErr) => {
+      if (renameErr) {
+        console.error('[rename error]', renameErr);
+        return res.status(500).json({ error: 'Failed to save file.' });
+      }
+      console.log(`[upload] ${finalName} | ${req.body.studentName} | ${req.body.studentEmail}`);
+      res.json({ ok: true, filename: finalName });
+    });
   });
 });
 

@@ -300,7 +300,9 @@ select option { background: var(--surface); }
       </div>
       <div class="field">
         <label>Upload password <span class="req">*</span></label>
-        <input type="password" id="f-pass" placeholder="Provided by your professor" oninput="validate()">
+        <input type="password" id="f-pass" placeholder="Provided by your professor" oninput="onPassInput()" onblur="checkPass()">
+        <p id="pass-error" style="font-size:12px;color:var(--error);margin-top:6px;display:none;">Incorrect password.</p>
+        <p id="pass-ok" style="font-size:12px;color:var(--success);margin-top:6px;display:none;">Password accepted.</p>
       </div>
       <div class="field">
         <label>Film title <span class="req">*</span></label>
@@ -399,6 +401,38 @@ select option { background: var(--surface); }
 
 <script>
 let selectedFile = null;
+let passVerified  = false;
+
+function onPassInput() {
+  passVerified = false;
+  document.getElementById('pass-ok').style.display    = 'none';
+  document.getElementById('pass-error').style.display = 'none';
+  validate();
+}
+
+async function checkPass() {
+  const pass = document.getElementById('f-pass').value.trim();
+  if (!pass) return;
+  try {
+    const res = await fetch('/check-pass', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uploadPass: pass }),
+    });
+    if (res.ok) {
+      passVerified = true;
+      document.getElementById('pass-ok').style.display    = 'block';
+      document.getElementById('pass-error').style.display = 'none';
+    } else {
+      passVerified = false;
+      document.getElementById('pass-error').style.display = 'block';
+      document.getElementById('pass-ok').style.display    = 'none';
+    }
+  } catch(e) {
+    passVerified = false;
+  }
+  validate();
+}
 
 function formatBytes(b) {
   if (b >= 1e9) return (b / 1e9).toFixed(2) + ' GB';
@@ -411,7 +445,7 @@ function validate() {
     document.getElementById('f-name').value.trim() &&
     document.getElementById('f-email').value.trim() &&
     document.getElementById('f-title').value.trim() &&
-    document.getElementById('f-pass').value.trim() &&
+    passVerified &&
     selectedFile;
   document.getElementById('submit-btn').disabled = !ready;
 }
